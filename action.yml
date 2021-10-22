@@ -1,0 +1,14 @@
+name: 'Backport PR into another PR by adding /backport comment'
+description: 'Backport PR into another PR by adding /backport comment'
+inputs:
+  token:
+    default: ${{ github.token }}
+    description: 'Token to communicate with GitHub API'
+    required: true
+runs:
+  using: 'composite'
+  steps:
+    - run: ${{ github.action_path }}/backport_command.py
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.token }}
