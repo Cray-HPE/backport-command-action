@@ -44,5 +44,4 @@ To perform backport, invoke command without `--dry-run` option. This will fork a
 * Backporting can be performed at any stage - on unmerged PR's, or on PR's merged via 'Merge Commit', 'Squash' or 'Rebase' strategy.
 * If backporting is done on unmerged PR, and changes were added later to the PR, backporting needs to be re-done. To do this, cleanup previous backport by deleting a branch named `backport/<pr_number>-to-<target_branch>` from repository. This will automatically close a PR generated for this branch.
 * Commits from current PR are cherry-picked one by one, in the order they are added to original PR. However, merge commits are ommitted (in order to filter out original PR synchronizations with base branch).
-* Backported changes should not involve changes to GitHub workflows (files under `.github/workflows` dir).
 
