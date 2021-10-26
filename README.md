@@ -1,6 +1,10 @@
 # backport-command-action
 Github action which performs backporting of changes in current PR to another branch, by cherry-picking every commit and creating a PR. Backporting is invoked by adding a command-style comment (`/backport`) to PR.
 
+## Requirements
+* Workflow should have permissions set to 'Read and Write'
+* In case of using self-hosted runner, it needs to have Python 3 with `requests` module installed.
+
 ## Installation
 Add this to `.github/workflow/backport.yaml`:
 
@@ -14,6 +18,7 @@ Add this to `.github/workflow/backport.yaml`:
     jobs:
       backport:
         runs-on: ubuntu-latest
+        if: github.event.issue.pull_request
         steps:
           - uses: Cray-HPE/backport-command-action@v1
 
@@ -32,10 +37,12 @@ To perform backport, invoke command without `--dry-run` option. This will fork a
 
     /backport release/1.0
     github-actions bot mentioned this pull request now
-        [Backport release/1.0] Original PR suject #2
+        [Backport release/1.0] My change #2
     Backporting into branch release/1.0 was successful. New PR: #2
 
 ## Usage Notes
 * Backporting can be performed at any stage - on unmerged PR's, or on PR's merged via 'Merge Commit', 'Squash' or 'Rebase' strategy.
 * If backporting is done on unmerged PR, and changes were added later to the PR, backporting needs to be re-done. To do this, cleanup previous backport by deleting a branch named `backport/<pr_number>-to-<target_branch>` from repository. This will automatically close a PR generated for this branch.
 * Commits from current PR are cherry-picked one by one, in the order they are added to original PR. However, merge commits are ommitted (in order to filter out original PR synchronizations with base branch).
+* Backported changes should not involve changes to GitHub workflows (files under `.github/workflows` dir).
+
