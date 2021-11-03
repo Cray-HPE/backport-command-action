@@ -20,7 +20,7 @@ Add this to `.github/workflow/backport.yaml`:
         runs-on: self-hosted
         if: github.event.issue.pull_request
         steps:
-          - uses: Cray-HPE/backport-command-action@v1
+          - uses: Cray-HPE/backport-command-action@main
 
 ## Usage
 For a quck usage instruction, add a comment consisting of single `/backport` command to a PR. GitHub Bot will respond with a comment:
