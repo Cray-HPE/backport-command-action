@@ -97,7 +97,7 @@ def cmd(cmd):
         raise(CommandException("\n".join([cmd, result.stdout, result.stderr])))
     return (result.stdout.strip(), result.stderr.strip())
 
-def clone(url, pr_number):
+def clone(url, branches, pr_number):
     dir = os.path.basename(os.environ["GITHUB_REPOSITORY"])
     auth_token = base64.b64encode(("x-access-token:%s" % os.environ["GITHUB_TOKEN"]).encode()).decode()
     # GitHub automatically masks GITHUB_TOKEN, but not in base64-encoded form
@@ -105,10 +105,15 @@ def clone(url, pr_number):
     print("Cleaning up directory %s" % dir)
     shutil.rmtree(dir, ignore_errors=True)
     print("Cloning repository %s into directory %s"  % (url, dir))
-    cmd("git -c \"http.https://github.com.extraheader=Authorization: basic %s\" clone -q %s %s" % (auth_token, url, dir))
+    # Make a shallow clone (depth=1) of single default branch
+    cmd("git -c \"http.https://github.com.extraheader=Authorization: basic %s\" clone --depth=1 -q %s %s" % (auth_token, url, dir))
     os.chdir(dir)
     cmd("git config --local http.https://github.com.extraheader \"Authorization: basic %s\"" % auth_token)
-    # Github stores refs to pr commits in refs/pull/<pr_number>/head for 90 days
+    # Fetch backport target branches, so that we can checkout them later
+    cmd("git remote set-branches origin %s" % " ".join(branches))
+    cmd("git fetch --depth=1 origin %s" % " ".join(branches))
+    # Github stores refs to pr commits in refs/pull/<pr_number>/head for 90 days.
+    # Fetching it to cherry-pick individual commits from it later.
     cmd("git fetch origin refs/pull/%d/head" % pr_number)
 
 def is_merge_commit(commit):
@@ -176,7 +181,7 @@ def main():
         if len(branches) == 0:
             post_comment(pr_number, "<pre>Usage: /backport [--dry-run] &lt;branch1&gt; [&lt;branch2&gt; ...]</pre>")
             sys.exit(0)
-        clone(event_data["repository"]["clone_url"], pr_number)
+        clone(event_data["repository"]["clone_url"], branches, pr_number)
         pr_data = get_pr(pr_number)
         return_code = 0
         for branch in branches:
