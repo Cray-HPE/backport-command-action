@@ -71,11 +71,14 @@ def post_comment(pr_number, comment):
     )
 
 def create_pr(head, base, title, body):
-    return http_call(
-        "repos/%s/pulls" % os.environ["GITHUB_REPOSITORY"],
-        "POST",
-        {"head": head, "base": base, "title": title, "body": body}
-    )
+    try:
+        return http_call(
+            "repos/%s/pulls" % os.environ["GITHUB_REPOSITORY"],
+            "POST",
+            {"head": head, "base": base, "title": title, "body": body}
+        )
+    except requests.exceptions.HTTPError as e:
+        raise(CommandException(str(e)))
 
 def get_pr(pr_number):
     return http_call("repos/%s/pulls/%d" % (os.environ["GITHUB_REPOSITORY"], pr_number))
