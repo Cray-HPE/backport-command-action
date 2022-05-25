@@ -55,12 +55,15 @@ def http_call(url, method = "GET", data = None):
     elif method == "POST":
         response = requests.post(full_url, headers = headers, data = json.dumps(data))
     else:
-        raise Exception("Unsupported HTTP method %s" % method)
+        raise CommandException("Unsupported HTTP method %s" % method)
     if os.environ.get("RUNNER_DEBUG") == "1":
         print("::debug::Response:")
         for line in response.text.split("\n"):
             print("::debug::    %s" % line)
-    response.raise_for_status()
+    try:
+        response.raise_for_status()
+    except requests.exceptions.HTTPError as e:
+        raise(CommandException(str(e)))
     return json.loads(response.text)
 
 def post_comment(pr_number, comment):
@@ -71,14 +74,11 @@ def post_comment(pr_number, comment):
     )
 
 def create_pr(head, base, title, body):
-    try:
-        return http_call(
-            "repos/%s/pulls" % os.environ["GITHUB_REPOSITORY"],
-            "POST",
-            {"head": head, "base": base, "title": title, "body": body}
-        )
-    except requests.exceptions.HTTPError as e:
-        raise(CommandException(str(e)))
+    return http_call(
+        "repos/%s/pulls" % os.environ["GITHUB_REPOSITORY"],
+        "POST",
+        {"head": head, "base": base, "title": title, "body": body}
+    )
 
 def get_pr(pr_number):
     return http_call("repos/%s/pulls/%d" % (os.environ["GITHUB_REPOSITORY"], pr_number))
