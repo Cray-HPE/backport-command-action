@@ -22,6 +22,7 @@
 # ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 # OTHER DEALINGS IN THE SOFTWARE.
 #
+import logging
 import os
 import subprocess
 import json
@@ -43,13 +44,13 @@ def http_call(url, method = "GET", data = None):
         "Content-Type": "application/json"
     }
     if os.environ.get("RUNNER_DEBUG") == "1":
-        print("::debug::Executing HTTP %s to %s" % (method, full_url))
-        print("::debug::Headers:")
+        logging.debug("::debug::Executing HTTP %s to %s" % (method, full_url))
+        logging.debug("::debug::Headers:")
         for header in headers:
-            print("::debug::    %s: %s" % (header, headers[header]))
+            logging.debug("::debug::    %s: %s" % (header, headers[header]))
         if data is not None:
-            print("::debug::Request:")
-            print("::debug::    %s" % json.dumps(data))
+            logging.debug("::debug::Request:")
+            logging.debug("::debug::    %s" % json.dumps(data))
     if method == "GET":
         response = requests.get(full_url, headers = headers)
     elif method == "POST":
@@ -57,9 +58,9 @@ def http_call(url, method = "GET", data = None):
     else:
         raise CommandException("Unsupported HTTP method %s" % method)
     if os.environ.get("RUNNER_DEBUG") == "1":
-        print("::debug::Response:")
+        logging.debug("::debug::Response:")
         for line in response.text.split("\n"):
-            print("::debug::    %s" % line)
+            logging.debug("::debug::    %s" % line)
     try:
         response.raise_for_status()
     except requests.exceptions.HTTPError as e:
@@ -89,13 +90,13 @@ def get_pr_commits(pr_number):
 def cmd(cmd):
     result = subprocess.run(cmd, shell=True, capture_output=True, check=False, text=True)
     if os.environ.get("RUNNER_DEBUG"):
-        print("::debug::Running command:")
-        print("::debug::    %s" % cmd)
-        print("::debug::Stdout:")
-        print("\n".join(map(lambda x: "::debug::    %s" % x, result.stdout.strip().split("\n"))))
-        print("::debug::Stderr:")
-        print("\n".join(map(lambda x: "::debug::    %s" % x, result.stderr.strip().split("\n"))))
-        print("::debug::Return code: %d" % result.returncode)
+        logging.debug("::debug::Running command:")
+        logging.debug("::debug::    %s" % cmd)
+        logging.debug("::debug::Stdout:")
+        logging.debug("\n".join(map(lambda x: "::debug::    %s" % x, result.stdout.strip().split("\n"))))
+        logging.debug("::debug::Stderr:")
+        logging.debug("\n".join(map(lambda x: "::debug::    %s" % x, result.stderr.strip().split("\n"))))
+        logging.debug("::debug::Return code: %d" % result.returncode)
     if result.returncode != 0:
         raise(CommandException("\n".join([cmd, result.stdout, result.stderr])))
     return (result.stdout.strip(), result.stderr.strip())
@@ -127,7 +128,7 @@ def backport(branch, pr_data, dry_run):
     pr_number = pr_data["number"]
     return_code = 0
     action = "Dry run backporting" if dry_run else "Backporting"
-    print("::group::%s PR #%d into branch %s" % (action, pr_number, branch))
+    logging.info("::group::%s PR #%d into branch %s" % (action, pr_number, branch))
     try:
         backport_branch = "backport/%d-to-%s" % (pr_number, branch)
         if ("origin/%s" % backport_branch) in re.split("\s+", cmd("git branch -r")[0]):
@@ -135,43 +136,41 @@ def backport(branch, pr_data, dry_run):
                 "`%s` had already been performed. To repeat backporting, you'll need to cleanup previous attempt first\n" + \
                 "by deleting branch `%s`. If backport PR had already been created, it will be closed\n" +
                 "automatically when branch is deleted.") % (backport_branch, branch, backport_branch))
-        print("Checking out branch %s from origin/%s" % (backport_branch, branch))
+        logging.info("Checking out branch %s from origin/%s" % (backport_branch, branch))
         cmd("git checkout -b %s -t origin/%s" % (backport_branch, branch))
-        print("Fetching list of PR commits to cherry-pick")
+        logging.info("Fetching list of PR commits to cherry-pick")
         commits = get_pr_commits(pr_number)
         for commit in commits:
             if is_merge_commit(commit):
-                print("Ommitting merge commit %s" % commit)
+                logging.info("Ommitting merge commit %s" % commit)
             else:
-                print("Cherry-picking commit %s" % commit)
+                logging.info("Cherry-picking commit %s" % commit)
                 user_name = cmd("git log -1 --format=\"%%an\" %s" % commit)[0]
                 user_email = cmd("git log -1 --format=\"%%ae\" %s" % commit)[0]
                 cmd("git -c user.name=\"%s\" -c user.email=\"%s\" cherry-pick %s -x" % \
                     (user_name, user_email, commit))
         if dry_run:
-            print("Skip pushing branches and creating backport PRs in dry run mode")
+            logging.info("Skip pushing branches and creating backport PRs in dry run mode")
             post_comment(pr_number, "Dry run backporting into branch %s was successful." % branch)
         else:
-            print("Pushing branch %s" % backport_branch)
+            logging.info("Pushing branch %s" % backport_branch)
             cmd("git push origin --set-upstream %s" % backport_branch)
-            print("Creating new PR for backport into branch %s" % branch)
+            logging.info("Creating new PR for backport into branch %s" % branch)
             new_pr_data = create_pr(backport_branch, branch, "[Backport %s] %s" % ( branch, pr_data["title"]), \
                 "Backport of %s" % pr_data["_links"]["html"]["href"])
-            print("Created PR #%d" % new_pr_data["number"])
+            logging.info("Created PR #%d" % new_pr_data["number"])
             post_comment(pr_number, ("Backporting into branch %s was successful. New PR: %s") % (branch, new_pr_data["html_url"]))
     except CommandException as e:
-        print("::error::Error occurred while %s into branch %s" % (action.lower(), branch))
-        print(e.message)
+        logging.error("::error::Error occurred while %s into branch %s" % (action.lower(), branch))
+        logging.error(e.message)
         post_comment(pr_number, ("Error occured while %s into branch %s." +
                 "\n\n<details><summary>Error</summary><pre>%s</pre></details>") % (action.lower(), branch, e.message))
         return_code = 1
-    print("::endgroup::")
+    logging.info("::endgroup::")
     return return_code
 
-def main():
-    with open(os.environ["GITHUB_EVENT_PATH"]) as f:
-        event_data = json.load(f)
-        dry_run = False
+def main(event_data):
+    dry_run = False
     pr_number = event_data["issue"]["number"]
     # Sanitize multiline string - leave only chars allowed in branch names
     comment_body = re.sub("[^0-9a-zA-Z/\\-\\. ]", "", event_data["comment"]["body"])
@@ -183,12 +182,18 @@ def main():
             branches = branches[1:]
         if len(branches) == 0:
             post_comment(pr_number, "<pre>Usage: /backport [--dry-run] &lt;branch1&gt; [&lt;branch2&gt; ...]</pre>")
-            sys.exit(0)
+            return 0
         clone(event_data["repository"]["clone_url"], branches, pr_number)
         pr_data = get_pr(pr_number)
         return_code = 0
         for branch in branches:
             return_code += backport(branch, pr_data, dry_run)
-        sys.exit(return_code)
+        return return_code
+    else:
+        return 0
 
-main()
+if __name__ == "__main__":
+    logging.basicConfig(format="%(message)s", level=logging.INFO)
+    with open(os.environ["GITHUB_EVENT_PATH"]) as f:
+        return_code = main(json.load(f))
+    sys.exit(return_code)
