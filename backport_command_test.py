@@ -95,10 +95,11 @@ class BackportCommandTest(unittest.TestCase):
                 "clone_url": "https://github.com/Cray-HPE/backport-command-action.git"
             }
         }
+        auth_header = backport_command.get_auth_header("https://github.com/Cray-HPE/backport-command-action.git")
         backport.return_value = 0
         result = backport_command.main(event_data)
         self.assertEqual(result, 0)
-        backport.assert_called_once_with("feature/backport-target", unittest.mock.ANY, True)
+        backport.assert_called_once_with("feature/backport-target", unittest.mock.ANY, True, auth_header)
 
     @patch("backport_command.get_pr")
     @patch("backport_command.clone")
@@ -115,10 +116,11 @@ class BackportCommandTest(unittest.TestCase):
                 "clone_url": "https://github.com/Cray-HPE/backport-command-action.git"
             }
         }
+        auth_header = backport_command.get_auth_header("https://github.com/Cray-HPE/backport-command-action.git")
         backport.return_value = 0
         result = backport_command.main(event_data)
         self.assertEqual(result, 0)
-        backport.assert_called_once_with("feature/backport-target", unittest.mock.ANY, False)
+        backport.assert_called_once_with("feature/backport-target", unittest.mock.ANY, False, auth_header)
 
     @patch("backport_command.post_comment")
     @patch("backport_command.create_pr")
@@ -143,7 +145,8 @@ class BackportCommandTest(unittest.TestCase):
                 }
             }
         }
-        backport_command.backport("feature/backport-target", pr_data, False)
+        auth_header = backport_command.get_auth_header("https://github.com/Cray-HPE/backport-command-action.git")
+        backport_command.backport("feature/backport-target", pr_data, False, auth_header)
         result = backport_command.cmd("git status")[0].split("\n")
         self.assertIn("On branch backport/1-to-feature/backport-target", result)
         self.assertIn("Your branch is up to date with 'origin/backport/1-to-feature/backport-target'.", result)
@@ -179,7 +182,8 @@ class BackportCommandTest(unittest.TestCase):
                 }
             }
         }
-        backport_command.backport("feature/backport-target", pr_data, True)
+        auth_header = backport_command.get_auth_header("https://github.com/Cray-HPE/backport-command-action.git")
+        backport_command.backport("feature/backport-target", pr_data, True, auth_header)
         result = backport_command.cmd("git status")[0].split("\n")
         self.assertIn("On branch backport/1-to-feature/backport-target", result)
         self.assertIn("Your branch is ahead of 'origin/feature/backport-target' by 1 commit.", result)
@@ -219,7 +223,8 @@ class BackportCommandTest(unittest.TestCase):
                 }
             }
         }
-        backport_command.backport("feature/backport-target", pr_data, False)
+        auth_header = backport_command.get_auth_header("https://github.com/Cray-HPE/backport-command-action.git")
+        backport_command.backport("feature/backport-target", pr_data, False, auth_header)
         result = backport_command.cmd("git status")[0].split("\n")
         self.assertIn("On branch backport/1-to-feature/backport-target", result)
         self.assertIn("Your branch is up to date with 'origin/backport/1-to-feature/backport-target'.", result)

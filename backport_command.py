@@ -31,6 +31,7 @@ import requests
 import shutil
 import sys
 import base64
+import urllib
 
 class CommandException(Exception):
     def __init__(self, message):
@@ -101,30 +102,34 @@ def cmd(cmd):
         raise(CommandException("\n".join([cmd, result.stdout, result.stderr])))
     return (result.stdout.strip(), result.stderr.strip())
 
-def clone(url, branches, pr_number):
-    dir = os.path.basename(os.environ["GITHUB_REPOSITORY"])
-    auth_token = base64.b64encode(("x-access-token:%s" % os.environ["GITHUB_TOKEN"]).encode()).decode()
-    # GitHub automatically masks GITHUB_TOKEN, but not in base64-encoded form
-    print("::add-mask::%s" % auth_token)
-    print("Cleaning up directory %s" % dir)
-    shutil.rmtree(dir, ignore_errors=True)
-    print("Cloning repository %s into directory %s"  % (url, dir))
-    # Make a shallow clone (depth=1) of single default branch
-    cmd("git -c \"http.https://github.com.extraheader=Authorization: basic %s\" clone --depth=1 -q %s %s" % (auth_token, url, dir))
-    os.chdir(dir)
-    cmd("git config --local http.https://github.com.extraheader \"Authorization: basic %s\"" % auth_token)
-    # Fetch backport target branches, so that we can checkout them later
-    cmd("git remote set-branches origin %s" % " ".join(branches))
-    cmd("git fetch --depth=1 origin %s" % " ".join(branches))
-    # Github stores refs to pr commits in refs/pull/<pr_number>/head for 90 days.
-    # Fetching it to cherry-pick individual commits from it later.
-    cmd("git fetch origin refs/pull/%d/head" % pr_number)
+def clone(url, branches, pr_number, auth_header):
+    try:
+        dir = os.path.basename(os.environ["GITHUB_REPOSITORY"])
+        git = "git -c \"%s\"" % auth_header
+        logging.info("Cleaning up directory %s" % dir)
+        shutil.rmtree(dir, ignore_errors=True)
+        logging.info("Cloning repository %s into directory %s"  % (url, dir))
+        # Make a shallow clone (depth=1) of single default branch
+        cmd("%s clone --depth=1 -q %s %s" % (git, url, dir))
+        os.chdir(dir)
+        # Fetch backport target branches, so that we can checkout them later
+        branch_list = " ".join(branches)
+        cmd("%s remote set-branches origin %s" % (git, branch_list))
+        cmd("%s fetch --depth=1 origin %s" % (git, branch_list))
+        # Github stores refs to pr commits in refs/pull/<pr_number>/head for 90 days.
+        # Fetching it to cherry-pick individual commits from it later.
+        cmd("%s fetch origin refs/pull/%d/head" % (git, pr_number))
+    except CommandException as e:
+        logging.error("::error::Error occurred while cloning repo %s" % url)
+        logging.error(e.message)
+        post_comment(pr_number, ("Error occured while cloning repo %s." +
+                "\n\n<details><summary>Error</summary><pre>%s</pre></details>") % (url, e.message))
 
 def is_merge_commit(commit):
     commit_data = cmd("git show %s --compact-summary" % commit)
     return True if re.search("^Merge:", commit_data[0], re.MULTILINE) else False
 
-def backport(branch, pr_data, dry_run):
+def backport(branch, pr_data, dry_run, auth_header):
     pr_number = pr_data["number"]
     return_code = 0
     action = "Dry run backporting" if dry_run else "Backporting"
@@ -154,7 +159,7 @@ def backport(branch, pr_data, dry_run):
             post_comment(pr_number, "Dry run backporting into branch %s was successful." % branch)
         else:
             logging.info("Pushing branch %s" % backport_branch)
-            cmd("git push origin --set-upstream %s" % backport_branch)
+            cmd("git -c \"%s\" push origin --set-upstream %s" % (auth_header, backport_branch))
             logging.info("Creating new PR for backport into branch %s" % branch)
             new_pr_data = create_pr(backport_branch, branch, "[Backport %s] %s" % ( branch, pr_data["title"]), \
                 "Backport of %s" % pr_data["_links"]["html"]["href"])
@@ -168,6 +173,13 @@ def backport(branch, pr_data, dry_run):
         return_code = 1
     logging.info("::endgroup::")
     return return_code
+
+def get_auth_header(url):
+    auth_token = base64.b64encode(("x-access-token:%s" % os.environ["GITHUB_TOKEN"]).encode()).decode()
+    # GitHub automatically masks GITHUB_TOKEN, but not in base64-encoded form
+    logging.info("::add-mask::%s" % auth_token)
+    parse_result = urllib.parse.urlparse(url)
+    return "http.%s://%s.extraheader=Authorization: basic %s" % (parse_result.scheme, parse_result.hostname, auth_token)
 
 def main(event_data):
     dry_run = False
@@ -183,11 +195,13 @@ def main(event_data):
         if len(branches) == 0:
             post_comment(pr_number, "<pre>Usage: /backport [--dry-run] &lt;branch1&gt; [&lt;branch2&gt; ...]</pre>")
             return 0
-        clone(event_data["repository"]["clone_url"], branches, pr_number)
+        url = event_data["repository"]["clone_url"]
+        auth_header = get_auth_header(url)
+        clone(url, branches, pr_number, auth_header)
         pr_data = get_pr(pr_number)
         return_code = 0
         for branch in branches:
-            return_code += backport(branch, pr_data, dry_run)
+            return_code += backport(branch, pr_data, dry_run, auth_header)
         return return_code
     else:
         return 0
